@@ -1,0 +1,11 @@
+syntax: glob
+bin
+data
+*.class
+*~
+javadoc
+doc
+*.o
+*.i
+*.s
+tests/output
