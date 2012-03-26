@@ -37,13 +37,6 @@
   if(is_null(mem_alloc(type,symbol,num)))                               \
     fatal("Unable to allocate %u bytes of RAM.\n",((num) * sizeof(type)))
 
-#define str_clone(new,old)                      \
-  char * new;                                   \
-  {                                             \
-    fatal_mem_alloc(char *,new,strlen(old)+1);  \
-    strcpy(new,old);                            \
-  }
-
 #define toggle(x) ( ( x ) = ( x ) ? 0 : 1 )
 
 
@@ -96,9 +89,9 @@ static path_info_t path_info;
 static int    opt_verbosity = 0;
 static int    opt_debug_on = 0;
 static int    opt_all_paths = 0;
-static int    opt_check_dir_exists = 0;
+static int    opt_check_exists = 1;
 static int    opt_only_executable_dirs = 1;
-static int    opt_dir_exists = 1;
+static int    opt_dirs_only = 0;
 static int    opt_remove_dupes = 1;
 static int    opt_discard_empty = 1;
 static int    opt_include_verbose = 0;
@@ -106,6 +99,7 @@ static char   opt_delim = ':';
 static int    opt_target_shell = CPATH_SHELL_BASH;
 static int    opt_output_unchanged = 0;
 static int    opt_common_paths = 0;
+static args_array_t *opt_exclude_match;
 
 /**
  * Print the start of a comment if needed
@@ -149,7 +143,7 @@ void debug_out(const char *format, ...) {
   if (opt_debug_on) {
     va_list attribs;
     start_comment_if(debug_fh);
-    fprintf(debug_fh,"[DEBUG] ");
+    fprintf(debug_fh,"# [DEBUG] ");
     va_start(attribs, format);
     vfprintf(stderr,format, attribs);
     va_end(attribs);
@@ -175,13 +169,47 @@ void fatal(const char *format, ...) {
 }
 
 /**
+ * Same as malloc, but on failure prints a meaningful error and exits
+ * program non-zero
+ *
+ * @author Gabriele Fariello
+ *
+ * @param size resize to which size?
+ *
+ * @return a pointer of type void * to the memory allocated.
+ */
+void * fatal_malloc(size_t size) {
+  void * ptr = (void *)malloc(size);
+  if(NULL == ptr) {
+    fatal("Out of memory. Failed to allocate %u bytes or RAM.\n",size);
+  }
+  return ptr;
+}
+
+/**
+ * Create a new copy (clone) of a string.
+ *
+ * @author Gabriele Fariello
+ *
+ * @param string to clone
+ *
+ * @return a pointer to the new string copy
+ */
+char * str_clone(char *old_str) {
+  char *new_str = NULL;
+  new_str = (char *)fatal_malloc(strlen(old_str) + 1);
+  strcpy(new_str,old_str);
+  return new_str;
+}
+
+/**
  * Add another argument to the args_array "array"
  *
  * @param arg the string to add.
  * @args_array the args_array_t to which to add it.
  */
 static void cpath_add_other_arg(char *arg,args_array_t *args_array) {
-  str_clone(new_arg,arg);
+  char * new_arg = str_clone(arg);
   if(0 == args_array->size) {
     args_array->size = 64;
     fatal_mem_alloc(char **,args_array->args,64);
@@ -291,7 +319,6 @@ void init_prog_light(char **argv) {
   debug(2,("Program name=\"%s\"\n",prog_basename));
 }
 
-
 /**
  * "Known" common paths. Not an extensive list, just the ones that popped in
  * my head plus RUBY ones since some folks use it around here
@@ -350,10 +377,45 @@ static void usage() {
          "  -I    = Toggle on/off outputting unchanged variables (default: off)\n"
          "  -n    = Print non-shell set compatible \"FOO=bar\".\n"
          "  -q    = Decrease verbosity by 1. Can be used multiple times.\n"
-         "  -r    = Toggle on/off to remove duplicate directories (default: on)\n"
-         "  -u    = Toggle on/off to include only \"usable\" directories (default: on)\n"
-         "  -v    = Increase verbosity by 1. Can be used multiple times.\n",
+         "  -r    = Toggle remove duplicate directories (default: on)\n"
+         "  -u    = Toggle include only \"usable\" (executable) directories (default: on)\n"
+         "  -v    = Increase verbosity by 1. Can be used multiple times.\n"
+         "  -x    = Toggle only allow directories (no files). (default: off)\n",
          get_progname(), get_progname());
+}
+
+static char *cpath_getval(int *idx, char *current_arg, int argc, char *args[]) {
+  char *next_arg = NULL;
+  if('\0' != *(current_arg + 1))
+    next_arg = str_clone(current_arg + 1);
+  else {
+    *(idx) += 1;
+    if(*(idx) >= argc)
+      fatal("ERROR: No argument provided for -%s!\n", current_arg);
+    if('-' == *(args[*idx]))
+      fatal("ERROR: No argument provided for -%s! if '%s' should be the argument, please quote.\n", current_arg, args[*idx]);
+    if('"' == *(args[*idx]) || '\'' == *(args[*idx])) {
+      int len = strlen(args[*idx]);
+      if(len > 1) {
+        if(*(args[*idx]) == *(args[*idx] + len)) {
+          next_arg = str_clone(args[*idx] + 1);
+          *(next_arg + len) = '\0';
+        }
+      }
+    }
+    if(NULL == next_arg)
+      next_arg = str_clone(args[*idx]);
+  }
+  return next_arg;
+}
+
+static args_array_t * cpath_new_args_array_t(void) {
+  args_array_t *args_array = NULL;
+  args_array = (args_array_t *)fatal_malloc(sizeof(args_array));
+  args_array->length = 0;
+  args_array->size = 0;
+  args_array->length = 0;
+  return args_array;
 }
 
 /**
@@ -361,11 +423,8 @@ static void usage() {
  */
 static args_array_t *cpath_parseargs(int argc, char *args[]) {
   int i = 0;
-  args_array_t *args_array = malloc(sizeof(args_array));
-  if(! args_array) fatal("Out or memory error - could not allocate RAM for args_array.\n");
-  args_array->length = 0;
-  args_array->size = 0;
-  args_array->length = 0;
+  args_array_t *args_array = cpath_new_args_array_t();
+  opt_exclude_match = cpath_new_args_array_t();
   for(
       i = 1; /* start at 1, not 0, since args[0] is the string with which
                 this programs was called */
@@ -405,10 +464,13 @@ static args_array_t *cpath_parseargs(int argc, char *args[]) {
           opt_verbosity --;
           break;
         case 'e':
-          toggle(opt_check_dir_exists);
+          toggle(opt_check_exists);
           break;
         case 'u':
           toggle(opt_only_executable_dirs);
+          break;
+        case 'x':
+          toggle(opt_dirs_only);
           break;
         case 'D':
           toggle(opt_debug_on);
@@ -444,6 +506,9 @@ static args_array_t *cpath_parseargs(int argc, char *args[]) {
             usage();
             fatal("-d arg not currently supported use -darg in stead.");
           }
+          break;
+        case 'E':
+          cpath_add_other_arg(cpath_getval(&i,this_arg,argc,args),opt_exclude_match);
           break;
         default:
           usage();
@@ -525,36 +590,59 @@ int cpath_can_exec_dir(struct stat * file_stat) {
  * @param the hash of that directory string. Passing it is more efficient that
  *        recomputing it.
  */
-unsigned char cpath_should_add(char *current_dir, unsigned int hash) {
+unsigned char cpath_should_add(char *current_file_or_dir, unsigned int hash) {
   struct stat file_stat;
-  debug(3,("cpath_should_add(\"%s\",%u)\n",current_dir,hash));
+  debug(3,("cpath_should_add(\"%s\",%u)\n",current_file_or_dir,hash));
   /* if we don't keep empty dirs, don't bother with the rest */
-  if(opt_discard_empty && '\0' == *current_dir) {
-    verbose(2,("Ignoring empty string directory name \"%s\"\n",
-               current_dir));
+  if(opt_discard_empty && '\0' == *current_file_or_dir) {
+    verbose(2,("# Ignoring empty string directory name \"%s\"\n",
+               current_file_or_dir));
     return 0;
   }
-  if( opt_remove_dupes && cpath_seen_before(current_dir,hash) ) {
+  /* If we're removing stuff, see if this whould be removed. */
+  if(opt_exclude_match->length > 0) {
+    unsigned int i;
+    for(i = 0; i < opt_exclude_match->length; i++) {
+      if(NULL != strstr(current_file_or_dir,opt_exclude_match->args[i])) {
+        verbose(2,("# Removing \"%s\" (matched '%s')\n",
+                   current_file_or_dir, opt_exclude_match->args[i]));
+        return 0;
+      }
+    }
+  }
+  if( opt_remove_dupes && cpath_seen_before(current_file_or_dir,hash) ) {
     /* don't do anything with this dir */
-    verbose(2,("Ignoring previously seen directory \"%s\"\n",
-               current_dir));
+    verbose(2,("# Ignoring duplicate file or directory \"%s\"\n",
+               current_file_or_dir));
     return 0;
-  } else if (opt_dir_exists && 0 != stat(current_dir, &file_stat)) {
-    /* if we're only supposed to check if directories exist, and it
-       doen't we let someone know if needed, and skip it */
-    verbose(2,("Ignoring non-existent directory \"%s\"\n",
-               current_dir));
-    return 0;
-  } else if (opt_only_executable_dirs && /* if we only want executable
-                                            directories */
-             ! cpath_can_exec_dir(&file_stat)
-             ) {
-    /* don't do anything with this dir */
-    verbose(2,("Ignoring non-usable directory \"%s\"\n",current_dir));
-    return 0;
+  }
+  if (opt_only_executable_dirs || opt_check_exists) {
+    if(0 != stat(current_file_or_dir, &file_stat)) {
+      /* if we're only supposed to check if directories exist, and it
+         doen't we let someone know if needed, and skip it */
+      verbose(2,("# Ignoring non-existent file or directory \"%s\"\n",
+                 current_file_or_dir));
+      return 0;
+    } else {
+      int is_dir = S_ISDIR(file_stat.st_mode);
+      if (opt_dirs_only && ! is_dir) {
+        verbose(2,("# Ignoring non-directory \"%s\"\n",current_file_or_dir));
+        return 0;
+      }
+      if (opt_only_executable_dirs && /* if we only want executable
+                                              directories */
+          is_dir &&
+          ! cpath_can_exec_dir(&file_stat)
+          ) {
+        /* don't do anything with this dir */
+        verbose(2,("# Ignoring non-usable directory \"%s\"\n",current_file_or_dir));
+        return 0;
+      }
+    }
+    return 1;
   } else {
     /* If we got here, we have a keeper */
-    verbose(2,("Keeping \"%s\"\n", current_dir));
+    verbose(2,("# Keeping \"%s\"\n", current_file_or_dir));
     return 1;
   }
 }
@@ -566,11 +654,11 @@ unsigned char cpath_should_add(char *current_dir, unsigned int hash) {
  * @param the hash of that directory string. Passing it is more efficient that
  *        recomputing it.
  */
-void cpath_add_if(char *current_dir, unsigned int hash) {
+void cpath_add_if(char *current_file_or_dir, unsigned int hash) {
   debug(5,("cpath_add_if: before new_path = \"%s\"\n", path_info.new_path_string));
   { /* Start isolated block */
-    char *char_ptr = current_dir;
-    debug(4,("cpath_add_if: - Before trimming: \"%s\"\n", current_dir));
+    char *char_ptr = current_file_or_dir;
+    debug(4,("cpath_add_if: - Before trimming: \"%s\"\n", current_file_or_dir));
     /* move to end of string */
     while(*char_ptr) char_ptr ++;
     /* back up one (b/c were at the null char */
@@ -581,10 +669,10 @@ void cpath_add_if(char *current_dir, unsigned int hash) {
     char_ptr ++;
     /* terminate string here. */
     *char_ptr = '\0';
-    debug(4,("cpath_add_if: - After  trimming: \"%s\"\n", current_dir));
+    debug(4,("cpath_add_if: - After  trimming: \"%s\"\n", current_file_or_dir));
   } /* End isolated block */
-  if( cpath_should_add(current_dir,hash) ){
-    debug(3,("Adding \"%s\"\n", current_dir));
+  if( cpath_should_add(current_file_or_dir,hash) ){
+    debug(3,("Adding \"%s\"\n", current_file_or_dir));
     /* If we're not at the start of the new path string, then we need
        to add a "delim" separator for this directory */
     if(path_info.new_path_string_ptr != path_info.new_path_string) {
@@ -592,15 +680,15 @@ void cpath_add_if(char *current_dir, unsigned int hash) {
       *(path_info.new_path_string_ptr) = path_info.delim;
       path_info.new_path_string_ptr ++;
     }
-    while('\0' != *current_dir) {
-      *(path_info.new_path_string_ptr) = *current_dir;
+    while('\0' != *current_file_or_dir) {
+      *(path_info.new_path_string_ptr) = *current_file_or_dir;
       path_info.new_path_string_ptr ++;
-      current_dir ++;
+      current_file_or_dir ++;
     }
     *(path_info.new_path_string_ptr) = '\0';
     debug(4,(" - After adding_path=\"%s\"\n", path_info.new_path_string));
   } else {
-    debug(3,("NOT Adding \"%s\"\n", current_dir));
+    debug(3,("NOT Adding \"%s\"\n", current_file_or_dir));
   }
   debug(5,("cpath_add_if: after new_path = \"%s\"\n", path_info.new_path_string));
 }
@@ -624,11 +712,11 @@ void cpath_clean_path(char delim, const char *env_name,const char *old_path_stri
   path_info.directories             = NULL;
   path_info.delim                   = delim;
   if(! old_path_string) {
-    verbose(1,("OLD %s=\"\" # was unset\n",env_name));
+    verbose(1,("# OLD %s=\"\" # was unset\n",env_name));
     return;
   }
 
-  verbose(1,("OLD %s=\"%s\"\n",env_name,old_path_string));
+  verbose(1,("# OLD %s=\"%s\"\n",env_name,old_path_string));
   {  /* Start isolated block */
     /* In one pass, get the original length of the PATH and calculate
        how many directories it contained (needed for malloc'ing stuff
@@ -684,7 +772,7 @@ void cpath_clean_path(char delim, const char *env_name,const char *old_path_stri
   debug(3,("Building new...\n"));
   { /* Start isolated block */
     /* Start at the begining */
-    char *current_dir = old_path_string_copy;
+    char *current_file_or_dir = old_path_string_copy;
     /* This is a magic hash number */
     unsigned int hash = 5381;
     /* Loop through all the chars in the PATH string */
@@ -692,8 +780,8 @@ void cpath_clean_path(char delim, const char *env_name,const char *old_path_stri
       /* At each delimitor, process the previous directory */
       if(path_info.delim == *old_path_string_copy) {
         *old_path_string_copy = '\0';
-        cpath_add_if(current_dir, hash);
-        current_dir = old_path_string_copy+1;
+        cpath_add_if(current_file_or_dir, hash);
+        current_file_or_dir = old_path_string_copy+1;
         /* Reset the hash value to the magic value */
         hash = 5381;
       } else {
@@ -704,9 +792,9 @@ void cpath_clean_path(char delim, const char *env_name,const char *old_path_stri
       old_path_string_copy++;
     }
     /* Still have to process the last directory if any */
-    cpath_add_if(current_dir, hash);
+    cpath_add_if(current_file_or_dir, hash);
   } /* End isolated block */
-  verbose(1,("NEW %s=\"%s\"\n",env_name,path_info.new_path_string));
+  verbose(1,("# NEW %s=\"%s\"\n",env_name,path_info.new_path_string));
   /* Now output a string to STDOUT as asked */
   if(
      opt_output_unchanged ||
