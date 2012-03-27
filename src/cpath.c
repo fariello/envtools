@@ -295,6 +295,7 @@ void init_prog_light(char **argv) {
     fatal("Could not determine program name.");
   if('\0' == *cptr)
     fatal("This program has no name. Should not be possible.");
+  basename_ptr = cptr;
   while('\0' != *cptr) {
     if('/' == *cptr) {
       len = 0;
@@ -306,6 +307,7 @@ void init_prog_light(char **argv) {
   }
   if(! len)
     fatal("An unknown error occurred when trying to determine the program basename.");
+  len = strlen(basename_ptr);
   prog_basename = (char *)malloc(len + 1);
   if(! prog_basename)
     fatal("Out of Memory trying to get RAM for prog_basename.");
@@ -384,16 +386,16 @@ static void usage() {
          get_progname(), get_progname());
 }
 
-static char *cpath_getval(int *idx, char *current_arg, int argc, char *args[]) {
+static char *cpath_getval(int *idx, char **current_arg, int argc, char *args[]) {
   char *next_arg = NULL;
-  if('\0' != *(current_arg + 1))
-    next_arg = str_clone(current_arg + 1);
-  else {
+  if('\0' != *(*(current_arg) + 1)) {
+    next_arg = str_clone(++*(current_arg));
+  } else {
     *(idx) += 1;
     if(*(idx) >= argc)
-      fatal("ERROR: No argument provided for -%s!\n", current_arg);
+      fatal("ERROR: No argument provided for -%s!\n", *(current_arg));
     if('-' == *(args[*idx]))
-      fatal("ERROR: No argument provided for -%s! if '%s' should be the argument, please quote.\n", current_arg, args[*idx]);
+      fatal("ERROR: No argument provided for -%s! if '%s' should be the argument, please quote.\n", *(current_arg), args[*idx]);
     if('"' == *(args[*idx]) || '\'' == *(args[*idx])) {
       int len = strlen(args[*idx]);
       if(len > 1) {
@@ -454,6 +456,7 @@ static args_array_t *cpath_parseargs(int argc, char *args[]) {
           break;
         case 'v':
           opt_verbosity ++;
+          verbose(2,("# Set verbosity to \"%d\"\n",opt_verbosity));
           break;
         case 'h':
         case '?':
@@ -462,6 +465,7 @@ static args_array_t *cpath_parseargs(int argc, char *args[]) {
           break;
         case 'q':
           opt_verbosity --;
+          verbose(2,("# Set verbosity to \"%d\"\n",opt_verbosity));
           break;
         case 'e':
           toggle(opt_check_exists);
@@ -501,14 +505,16 @@ static args_array_t *cpath_parseargs(int argc, char *args[]) {
             no_comments();
           break;
         case 'd':
-          opt_delim = *(this_arg + 1);
+          opt_delim = *(cpath_getval(&i,&this_arg,argc,args));
+          verbose(1,("# Set path delimitor to \"%c\"\n",opt_delim));
           if(!opt_delim) {
             usage();
             fatal("-d arg not currently supported use -darg in stead.");
           }
           break;
         case 'E':
-          cpath_add_other_arg(cpath_getval(&i,this_arg,argc,args),opt_exclude_match);
+          cpath_add_other_arg(cpath_getval(&i,&this_arg,argc,args),opt_exclude_match);
+          verbose(1,("# Exclude path members matching \"%s\"\n",opt_exclude_match));
           break;
         default:
           usage();
@@ -712,11 +718,11 @@ void cpath_clean_path(char delim, const char *env_name,const char *old_path_stri
   path_info.directories             = NULL;
   path_info.delim                   = delim;
   if(! old_path_string) {
-    verbose(1,("# OLD %s=\"\" # was unset\n",env_name));
+    verbose(3,("# OLD %s=\"\" # was unset\n",env_name));
     return;
   }
 
-  verbose(1,("# OLD %s=\"%s\"\n",env_name,old_path_string));
+  verbose(3,("# OLD %s=\"%s\"\n",env_name,old_path_string));
   {  /* Start isolated block */
     /* In one pass, get the original length of the PATH and calculate
        how many directories it contained (needed for malloc'ing stuff
@@ -794,7 +800,7 @@ void cpath_clean_path(char delim, const char *env_name,const char *old_path_stri
     /* Still have to process the last directory if any */
     cpath_add_if(current_file_or_dir, hash);
   } /* End isolated block */
-  verbose(1,("# NEW %s=\"%s\"\n",env_name,path_info.new_path_string));
+  verbose(3,("# NEW %s=\"%s\"\n",env_name,path_info.new_path_string));
   /* Now output a string to STDOUT as asked */
   if(
      opt_output_unchanged ||
@@ -808,7 +814,7 @@ void cpath_clean_path(char delim, const char *env_name,const char *old_path_stri
       printf("export %s=\"%s\";\n",env_name,path_info.new_path_string);
       break;
     case CPATH_SHELL_CSH:
-      printf("setenv %s=%s\n",env_name,path_info.new_path_string);
+      printf("setenv %s \"%s\";\n",env_name,path_info.new_path_string);
       break;
     default:
       usage();
