@@ -11,21 +11,21 @@ TEST_OUT_DIR  = $(TEST_DIR)/output
 TEST_IN_DIR   = $(TEST_DIR)/input
 TEST_DIRR_DIR = $(TEST_DIR)/diff
 
-all: clean cpath
-	$(CC) $(REL_CFLAGS) ./src/cpath.c -o ./bin/cpath
+all: clean cleanpath
+	$(CC) $(REL_CFLAGS) ./src/cleanpath.c -o ./bin/cleanpath
 
-cpath:
-	$(CC) $(REL_FLAGS) ./src/cpath.c -o ./bin/cpath
+cleanpath:
+	$(CC) $(REL_FLAGS) ./src/cleanpath.c -o ./bin/cleanpath
 
-debug-cpath: clean
+debug-cleanpath: clean
 	mkdir -p $(TEST_OUT_DIR)
-	$(CC) $(DEBUG_CFLAGS) ./src/cpath.c -o ./bin/cpath
-	./bin/cpath NO_SUCH_1 NO_SUCH_2 PATH -D -v -v -v -v -v 2> $(TEST_OUT_DIR)/test1_out_err.txt
-	./bin/cpath BAR_PATH -D -v -v -v -v -v -v 2> $(TEST_OUT_DIR)/test2_out_err.txt
-	./bin/cpath -A -D -v -v -v -v -v 2> $(TEST_OUT_DIR)/test3_out_err.txt
+	$(CC) $(DEBUG_CFLAGS) ./src/cleanpath.c -o ./bin/cleanpath
+	./bin/cleanpath NO_SUCH_1 NO_SUCH_2 PATH -D -v -v -v -v -v 2> $(TEST_OUT_DIR)/test1_out_err.txt
+	./bin/cleanpath BAR_PATH -D -v -v -v -v -v -v 2> $(TEST_OUT_DIR)/test2_out_err.txt
+	./bin/cleanpath -A -D -v -v -v -v -v 2> $(TEST_OUT_DIR)/test3_out_err.txt
 
 clean:
-	rm -vf ./core ./bin/* ./bin/.??* ./cpath.o ./cpath.i ./cpath.s
+	rm -vf ./core ./bin/* ./bin/.??* ./cleanpath.o ./cleanpath.i ./cleanpath.s
 	rm -rvf $(TEST_OUT_DIR)
 	find . -name '*~' -delete -print
 	mkdir -p ./bin

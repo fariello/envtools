@@ -811,7 +811,7 @@ void cpath_clean_path(char delim, const char *env_name,const char *old_path_stri
       printf("%s=%s\n",env_name,path_info.new_path_string);
       break;
     case CPATH_SHELL_BASH:
-      printf("export %s=\"%s\";\n",env_name,path_info.new_path_string);
+      printf("export %s=%s\n",env_name,path_info.new_path_string);
       break;
     case CPATH_SHELL_CSH:
       printf("setenv %s \"%s\";\n",env_name,path_info.new_path_string);
