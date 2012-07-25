@@ -363,6 +363,8 @@ static void usage() {
          "--------------------------------------------------------------------------------\n"
          "OPTIONS:\n"
          "  -A    = Work on all environment variables whose name ends in \"PATH\".\n"
+         "  -E st = Remove path elements that match the string 'st'. Can specify multiple.\n"
+         "          Sorry, no regular expressions supported (yet)."
          "  -D    = Toggle on/off debugging output if avaiable (default: off)\n"
          "  -V    = Toggle on/off to print verbose output to stdout for inclusion into \n"
          "          scripts (default: off)\n"
@@ -388,14 +390,20 @@ static void usage() {
 
 static char *cpath_getval(int *idx, char **current_arg, int argc, char *args[]) {
   char *next_arg = NULL;
+  // If this is in the form -Abcdf, then use bcdf as the value of -A
   if('\0' != *(*(current_arg) + 1)) {
     next_arg = str_clone(++*(current_arg));
   } else {
+    // Use next argv as value
     *(idx) += 1;
+    // If we've gone past the end of the arguments, we have a problem
     if(*(idx) >= argc)
       fatal("ERROR: No argument provided for -%s!\n", *(current_arg));
+    // If the next argument is an argument specifier (starts with
+    // '-'), then we have a problem.
     if('-' == *(args[*idx]))
       fatal("ERROR: No argument provided for -%s! if '%s' should be the argument, please quote.\n", *(current_arg), args[*idx]);
+    // If it's quoted, then all is good, get the unquoted value.
     if('"' == *(args[*idx]) || '\'' == *(args[*idx])) {
       int len = strlen(args[*idx]);
       if(len > 1) {
@@ -405,6 +413,7 @@ static char *cpath_getval(int *idx, char **current_arg, int argc, char *args[]) 
         }
       }
     }
+    // If we have not assinged (a quoted value), just assign the whole thing.
     if(NULL == next_arg)
       next_arg = str_clone(args[*idx]);
   }
