@@ -349,7 +349,8 @@ static gid_t gid;
  * Prints out a (hopefully) useful help menssage
  */
 static void usage() {
-  printf("Usage: %s OPTIONS [ENV_NAME1 [ENV_NAME2 [...]]]\n"
+  printf("================================================================================\n"
+         "Usage: %s OPTIONS [ENV_NAME1 [ENV_NAME2 [...]]]\n"
          "\n"
          "Cleans up PATH environment variables. By default with no arguments, cleans up\n"
          "only the $PATH environment variable by outputting text which is suitable for\n"
@@ -360,32 +361,72 @@ static void usage() {
          "execute). Since it is possible to be able to use directories to which the\n"
          "current user does not have read access, those are not discarded.\n"
          "\n"
+         "Note that all environment variables specified on the command line are checked,\n"
+         "regardless of whether or not their names match the criteria. Only variables\n"
+         "in the current environment are checked for criteria. For efficiency reasons, we\n"
+         "don't check to see if we previously processed an environment variable, so a\n"
+         "variable may be processed muliple times. This results in improved efficiency\n"
+         "under most cases, but reduced efficiency if a variable is specified on the\n"
+         "command line and matches criteria. Not a significant difference, however.\n"
+         "\n"
          "--------------------------------------------------------------------------------\n"
          "OPTIONS:\n"
+         "\n"
+         "Environment Variable NAME Criteria:\n"
          "  -A    = Work on all environment variables whose name ends in \"PATH\".\n"
-         "  -E st = Remove path elements that match the string 'st'. Can specify multiple.\n"
-         "          Sorry, no regular expressions supported (yet)."
-         "  -D    = Toggle on/off debugging output if avaiable (default: off)\n"
-         "  -V    = Toggle on/off to print verbose output to stdout for inclusion into \n"
-         "          scripts (default: off)\n"
-         "  -b    = Print bash/sh/dash set compatible \"export FOO=bar;\" definitions\n"
-         "          (default).\n"
          "  -C    = Work on \"common\" environment variables:\n"
          "              PATH, MANPATH, LD_LIBRARY_PATH, PERL5LIB, PYTHONPATH, RUBYLIB,\n"
          "              DLN_LIBRARY_PATH, RUBYLIB_PREFIX, CLASSPATH\n"
-         "  -c    = Print tcsh/csh set compatible \"setenv FOO=bar;\" definitions.\n"
+         "\n"
+         "Environment Variable VALUE Criteria:\n"
+         "  -E st = Remove path elements that match the string 'st'. Can specify multiple.\n"
+         "          Sorry, no regular expressions supported (yet)."
          "  -d'X' = Set the path delimiter to 'X' (default ':').\n"
+         "Output Formatting:\n"
+         "  -b    = Print bash/sh/dash set compatible \"export FOO=bar;\" definitions\n"
+         "          (default).\n"
+         "  -c    = Print tcsh/csh set compatible \"setenv FOO=bar;\" definitions.\n"
+         "  -D    = Toggle on/off debugging output if avaiable (default: off)\n"
          "  -e    = Toggle on/off to include only existing directories (default: on)\n"
-         "  -h    = Print this help message\n"
-         "  -?    = Print this help message\n"
          "  -I    = Toggle on/off outputting unchanged variables (default: off)\n"
          "  -n    = Print non-shell set compatible \"FOO=bar\".\n"
          "  -q    = Decrease verbosity by 1. Can be used multiple times.\n"
          "  -r    = Toggle remove duplicate directories (default: on)\n"
          "  -u    = Toggle include only \"usable\" (executable) directories (default: on)\n"
          "  -v    = Increase verbosity by 1. Can be used multiple times.\n"
-         "  -x    = Toggle only allow directories (no files). (default: off)\n",
-         get_progname(), get_progname());
+         "  -V    = Toggle on/off to print verbose output to stdout for inclusion into \n"
+         "          scripts (default: off)\n"
+         "  -x    = Toggle only allow directories (no files). (default: off)\n"
+         "\n"
+         "Help:\n"
+         "  -h or -? = Print this help message\n"
+         "--------------------------------------------------------------------------------\n"
+         "Example usage in bash:\n"
+         "\n"
+         "# \"Clean\" the PATH variable ENV_NAME1 (even if it's not a PATH variable it\n"
+         "# will be treated as one, plus any \"common\" path variables, and while cleaning\n"
+         "# them, remove any path elements that match /some/path\n"
+         "# Note the backticks (\"%c\"). These are there since %s cannot modify\n"
+         "# the parents environment and by wrapping the output of %s in backticks\n"
+         "# it tells the shell (e.g, bash in this case) to execute the commands outputted\n"
+         "# by %s\n"
+         "%c%s ENV_NAME1 -E /some/path%c\n"
+         "\n"
+         "# Don't remove, just show me the output from above:\n"
+         "%s ENV_NAME1 -E /some/path\n"
+         "\n"
+         "================================================================================\n"
+         , get_progname()
+         , get_progname()
+         , '`'
+         , get_progname()
+         , get_progname()
+         , get_progname()
+         , '`'
+         , get_progname()
+         , '`'
+         , get_progname()
+         );
 }
 
 static char *cpath_getval(int *idx, char **current_arg, int argc, char *args[]) {

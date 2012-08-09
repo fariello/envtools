@@ -75,6 +75,7 @@ static int    opt_debug_on = 0;
 static int    opt_include_verbose = 0;
 static int    opt_target_shell = CPATH_SHELL_BASH;
 static int    opt_output_unchanged = 0;
+static int    opt_export = 1;
 static args_array_t *opt_name_match;
 static args_array_t *opt_name_starts;
 static args_array_t *opt_name_ends;
@@ -314,18 +315,28 @@ static gid_t gid;
  * Prints out a (hopefully) useful help menssage
  */
 static void usage() {
-  printf("Usage: %s OPTIONS [ENV_NAME1 [ENV_NAME2 [...]]]\n"
+  printf("================================================================================\n"
+         "Usage: %s OPTIONS [ENV_NAME1 [ENV_NAME2 [...]]]\n"
          "\n"
-         "Unset environment variables"
+         "Unset environment variables. All environment variables specified on the command\n"
+         "line are unset, regardless of whether or not they match criteria. Only variables\n"
+         "in the current environment are checked for criteria. Note that for efficiency, we\n"
+         "don't check to see if an environment variable was previously unset by us, so a\n"
+         "variable may be unset muliple times.\n"
          "--------------------------------------------------------------------------------\n"
          "OPTIONS:\n"
-         "  -m st = Unset any environment variable whose name matches the string 'st'.\n"
-         "  -s st = Unset any environment variable whose name starts with the string 'st'.\n"
-         "  -e st = Unset any environment variable whose name ends with the string 'st'.\n"
-         "  -M st = Unset any environment variable whose value matches the string 'st'.\n"
-         "  -S st = Unset any environment variable whose value starts with the string 'st'.\n"
-         "  -E st = Unset any environment variable whose value ends with the string 'st'.\n"
          "\n"
+         "Environment Variable NAME Criteria:\n"
+         "  -m st = Unset any env variable whose name matches the string 'st'.\n"
+         "  -s st = Unset any env variable whose name starts with the string 'st'.\n"
+         "  -e st = Unset any env variable whose name ends with the string 'st'.\n"
+         "\n"
+         "Environment Variable VALUE Criteria:\n"
+         "  -M st = Unset any env variable whose value matches the string 'st'.\n"
+         "  -S st = Unset any env variable whose value starts with the string 'st'.\n"
+         "  -E st = Unset any env variable whose value ends with the string 'st'.\n"
+         "\n"
+         "Output Formatting:\n"
 #ifdef DEBUG_ON
          "  -D    = Toggle on/off debugging output if avaiable (default: off)\n"
 #endif
@@ -336,11 +347,37 @@ static void usage() {
          "          (default).\n"
          "  -c    = Print tcsh/csh set compatible \"setenv FOO=bar;\" definitions.\n"
          "  -n    = Print non-shell set compatible \"FOO=bar\".\n"
+         "  -x    = Toggle exporting in bash/sh/dah. Export: \"export FOO=\",\n"
+         "          Not: \"unset FOO\". (default: export)\n"
          "  -q    = Decrease verbosity by 1. Can be used multiple times.\n"
          "  -v    = Increase verbosity by 1. Can be used multiple times.\n"
          "\n"
+         "Help:\n"
          "  -h or -? = Print this help message\n"
-         , get_progname());
+         "--------------------------------------------------------------------------------\n"
+         "Example usage in bash:\n"
+         "\n"
+         "# Remove ENV_NAME1 and any env variable whose value matches /some/path:\n"
+         "# Note the backticks (\"%c\"). These are there since %s cannot modify\n"
+         "# the parents environment and by wrapping the output of %s in backticks\n"
+         "# it tells the shell (e.g, bash in this case) to execute the commands outputted\n"
+         "# by %s\n"
+         "%c%s ENV_NAME1 -M /some/path%c\n"
+         "\n"
+         "# Don't remove, just show me the output from above:\n"
+         "%s ENV_NAME1 -M /some/path\n"
+         "\n"
+         "================================================================================\n"
+         , get_progname()
+         , '`'
+         , get_progname()
+         , get_progname()
+         , get_progname()
+         , '`'
+         , get_progname()
+         , '`'
+         , get_progname()
+         );
 }
 
 static char *cpath_getval(int *idx, char **current_arg, int argc, char *args[]) {
@@ -455,6 +492,9 @@ static args_array_t *cpath_parseargs(int argc, char *args[]) {
           else
             no_comments();
           break;
+        case 'x':
+          toggle(opt_export);
+          break;
         case 'm':
           cpath_add_other_arg(cpath_getval(&i,&this_arg,argc,args),opt_name_match);
           verbose(1,("# Unset any environment variable whose name matches \"%s\"\n",opt_name_match));
@@ -519,7 +559,11 @@ int unset_env(const char *env_name) {
     printf("%s=\n",env_name);
     break;
   case CPATH_SHELL_BASH:
-    printf("unset %s\n",env_name);
+    if(opt_export) {
+      printf("export %s=\n",env_name);
+    } else {
+      printf("unset %s\n",env_name);
+    }
     break;
   case CPATH_SHELL_CSH:
     printf("unsetenv %s;\n",env_name);
@@ -553,11 +597,11 @@ int unset_value_if(const char *env_name, const char *env_value) {
     }
   }
   if(opt_value_starts->length > 0) {
-    char *value_end = env_value + strlen(env_value);
+    const char *value_end = env_value + strlen(env_value);
     for(i=0;i<opt_value_starts->length;++i) {
       char *match_str = opt_value_starts->args[i];
       // Could be off end.
-      char *value_target = value_end - strlen(match_str);
+      const char *value_target = value_end - strlen(match_str);
       // If the match_str fits inside the env_value string and is at the end
       if(value_target > env_value && strstr(env_value,match_str) == value_target) {
         verbose(1,("%s's value ended with '%s'\n",env_name,opt_value_match->args[i]));
@@ -588,11 +632,11 @@ int unset_name_if(const char *env_name) {
     }
   }
   if(opt_name_starts->length > 0) {
-    char *name_end = env_name + strlen(env_name);
+    const char *name_end = env_name + strlen(env_name);
     for(i=0;i<opt_name_starts->length;++i) {
       char *match_str = opt_name_starts->args[i];
       // Could be off end.
-      char *name_target = name_end - strlen(match_str);
+      const char *name_target = name_end - strlen(match_str);
       // If the match_str fits inside the env_name string and is at the end
       if(name_target > env_name && strstr(env_name,match_str) == name_target) {
         verbose(1,("'%s' ends with '%s'\n",env_name,opt_name_ends->args[i]));
@@ -625,6 +669,7 @@ int main(int argc, char *argv[], char *envp[] ) {
     set_verbose_out(stdout);
   /* Some vars */
   size_t buffer_len = 1024;
+  unsigned int i = 0;
   char *buffer = (char*)fatal_malloc(sizeof(char) * buffer_len);
   char *env_def = NULL;
   char *env_name = NULL;
@@ -645,6 +690,8 @@ int main(int argc, char *argv[], char *envp[] ) {
     exit(EXIT_FAILURE);
     break;
   }
+  for(i=0; i<env_array->length; i++)
+    unset_env(env_array->args[i]);
   while(*envp) {
     env_def = *envp;
     envp++;
