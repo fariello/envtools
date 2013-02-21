@@ -389,6 +389,7 @@ static void usage() {
          "  -D    = Toggle on/off debugging output if avaiable (default: off)\n"
          "  -e    = Toggle on/off to include only existing directories (default: on)\n"
          "  -I    = Toggle on/off outputting unchanged variables (default: off)\n"
+         "  -k    = Toggle on/off keeping empty PATH components\n"
          "  -n    = Print non-shell set compatible \"FOO=bar\".\n"
          "  -q    = Decrease verbosity by 1. Can be used multiple times.\n"
          "  -r    = Toggle remove duplicate directories (default: on)\n"
@@ -566,6 +567,9 @@ static args_array_t *cpath_parseargs(int argc, char *args[]) {
           cpath_add_other_arg(cpath_getval(&i,&this_arg,argc,args),opt_exclude_match);
           verbose(1,("# Exclude path members matching \"%s\"\n",opt_exclude_match));
           break;
+        case 'k':
+          toggle(opt_discard_empty);
+          break;
         default:
           usage();
           fatal("Unknown parameter -%c\n",*this_arg);
@@ -672,7 +676,9 @@ unsigned char cpath_should_add(char *current_file_or_dir, unsigned int hash) {
                current_file_or_dir));
     return 0;
   }
-  if (opt_only_executable_dirs || opt_check_exists) {
+  if ((0 == strcmp("",current_file_or_dir)) && (! opt_discard_empty)) {
+    verbose(2,("# Keeping Empty PATH component \"%s\"\n",current_file_or_dir));
+  } else if (opt_only_executable_dirs || opt_check_exists) {
     if(0 != stat(current_file_or_dir, &file_stat)) {
       /* if we're only supposed to check if directories exist, and it
          doen't we let someone know if needed, and skip it */
