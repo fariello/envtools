@@ -380,7 +380,7 @@ static void usage() {
          "\n"
          "Environment Variable VALUE Criteria:\n"
          "  -E st = Remove path elements that match the string 'st'. Can specify multiple.\n"
-         "          Sorry, no regular expressions supported (yet)."
+         "          Sorry, no regular expressions supported (yet).\n"
          "  -d'X' = Set the path delimiter to 'X' (default ':').\n"
          "Output Formatting:\n"
          "  -b    = Print bash/sh/dash set compatible \"export FOO=bar;\" definitions\n"
@@ -678,35 +678,40 @@ unsigned char cpath_should_add(char *current_file_or_dir, unsigned int hash) {
   }
   if ((0 == strcmp("",current_file_or_dir)) && (! opt_discard_empty)) {
     verbose(2,("# Keeping Empty PATH component \"%s\"\n",current_file_or_dir));
-  } else if (opt_only_executable_dirs || opt_check_exists) {
-    if(0 != stat(current_file_or_dir, &file_stat)) {
-      /* if we're only supposed to check if directories exist, and it
-         doen't we let someone know if needed, and skip it */
-      verbose(2,("# Ignoring non-existent file or directory \"%s\"\n",
-                 current_file_or_dir));
-      return 0;
-    } else {
-      int is_dir = S_ISDIR(file_stat.st_mode);
-      if (opt_dirs_only && ! is_dir) {
-        verbose(2,("# Ignoring non-directory \"%s\"\n",current_file_or_dir));
-        return 0;
-      }
-      if (opt_only_executable_dirs && /* if we only want executable
-                                              directories */
-          is_dir &&
-          ! cpath_can_exec_dir(&file_stat)
-          ) {
-        /* don't do anything with this dir */
-        verbose(2,("# Ignoring non-usable directory \"%s\"\n",current_file_or_dir));
-        return 0;
-      }
-    }
-    return 1;
   } else {
-    /* If we got here, we have a keeper */
-    verbose(2,("# Keeping \"%s\"\n", current_file_or_dir));
-    return 1;
+    if (opt_only_executable_dirs || opt_check_exists) {
+      if(0 != stat(current_file_or_dir, &file_stat)) {
+	/* if we're only supposed to check if directories exist, and it
+	   doen't we let someone know if needed, and skip it */
+	verbose(2,("# Ignoring non-existent file or directory \"%s\"\n",
+		   current_file_or_dir));
+	return 0;
+      } else {
+	int is_dir = S_ISDIR(file_stat.st_mode);
+	if (opt_dirs_only && ! is_dir) {
+	  verbose(2,("# Ignoring non-directory \"%s\"\n",current_file_or_dir));
+	  return 0;
+	}
+	if (opt_only_executable_dirs && /* if we only want executable
+					   directories */
+	    is_dir &&
+	    ! cpath_can_exec_dir(&file_stat)
+	    ) {
+	  /* don't do anything with this dir */
+	  verbose(2,("# Ignoring non-usable directory \"%s\"\n",current_file_or_dir));
+	  return 0;
+	}
+      }
+      return 1;
+    } else {
+      /* If we got here, we have a keeper */
+      verbose(2,("# Keeping \"%s\"\n", current_file_or_dir));
+      return 1;
+    }
   }
+  /* Dead code to aviod warning on complie "warning: control reaches
+     end of non-void function [-Wreturn-type]" */
+  return 0;
 }
 
 /**
