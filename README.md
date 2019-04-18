@@ -131,6 +131,7 @@ Example usage in bash:
 cleanpath ENV_NAME1 -E /some/path
 
 ================================================================================
+```
 
 ## unsetenvs
 
